@@ -537,13 +537,14 @@
         return;
       }
 
-      let file = el.files[0];
+    let file = el.files[0];
       if(file.size > 2 * 1024 * 1024) {
          Swal.fire('Peringatan', 'Ukuran maksimal 2MB per file.', 'warning');
          el.value = ''; return;
       }
 
-      let labelEl = el.previousElementSibling;
+      // Perbaikan: Cari label secara akurat meskipun input ada di dalam div/kolom lain
+      let labelEl = el.closest('.upload-group').querySelector('.form-label');
       let originalLabel = labelEl.innerHTML.split(' <span class="badge')[0]; // Bersihkan badge lama jika ada
       labelEl.innerHTML = originalLabel + ' <span class="badge bg-warning text-dark ms-2 badge-upload">Mengunggah... <span class="spinner-border spinner-border-sm" style="width: 0.7rem; height: 0.7rem;"></span></span>';
       el.disabled = true;
