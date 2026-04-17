@@ -289,11 +289,12 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   
   <script>
-    // --- GLOBAL VARIABLES ---
+   // --- GLOBAL VARIABLES ---
     var activePage = 'home';
     var currentUser = null;
     var dbActive = [];
     var isDataLoaded = false;
+    window.uploadedFileUrls = {}; // Menyimpan URL file yang sudah otomatis terunggah
 
     // --- MOCK DATA (PREVIEW MODE) ---
     var mockMhs = {
@@ -305,9 +306,24 @@
     ];
 
     document.addEventListener('DOMContentLoaded', function() {
-      // Setup event listeners
+     // Setup event listeners
       var regForm = document.getElementById('registrationForm');
       if (regForm) regForm.addEventListener('submit', function(e) { e.preventDefault(); handleRegistrationSubmit(); });
+
+      // Auto-upload event listeners
+      const fileInputs = [
+        { id: 'fileTranskrip', prefix: 'Transkrip' },
+        { id: 'fileKRS', prefix: 'KHS' },
+        { id: 'fileUKBI', prefix: 'UKBI' },
+        { id: 'fileBing', prefix: 'BING' },
+        { id: 'fileOrtu', prefix: 'ORTU' },
+        { id: 'fileSehat', prefix: 'SEHAT' },
+        { id: 'fileAsuransi', prefix: 'ASURANSI' }
+      ];
+      fileInputs.forEach(f => {
+        let el = document.getElementById(f.id);
+        if(el) el.addEventListener('change', (e) => handleAutoUpload(e, f.prefix));
+      });
 
       var loginForm = document.getElementById('loginForm');
       if (loginForm) loginForm.addEventListener('submit', function(e) { e.preventDefault(); handleLogin(); });
@@ -509,7 +525,7 @@
       reader.onerror = error => reject(error);
     });
 
-    // 2. Submit Pendaftaran (Progressive Upload)
+              // 2. Submit Pendaftaran (Auto Upload URL Mapper)
     async function handleRegistrationSubmit() {
       let npm = document.getElementById('npm').value.trim();
       let nama = document.getElementById('nama').value.trim();
@@ -517,76 +533,38 @@
 
       if(!nama || !prodi) return Swal.fire('Peringatan', 'Pastikan Anda sudah klik tombol Cari NPM dan data ditemukan.', 'warning');
 
-      let filesToUpload = [
-        { id: 'fileTranskrip', prefix: 'Transkrip' },
-        { id: 'fileKHS', prefix: 'KHS' },
-        { id: 'fileUKBI', prefix: 'UKBI' },
-        { id: 'fileBing', prefix: 'BING' },
-        { id: 'fileOrtu', prefix: 'ORTU' },
-        { id: 'fileSehat', prefix: 'SEHAT' },
-        { id: 'fileAsuransi', prefix: 'ASURANSI' }
-      ];
-
-      // Validate files size (<2MB recommended, check locally if possible)
-      for(let i=0; i<filesToUpload.length; i++) {
-        let el = document.getElementById(filesToUpload[i].id);
-        if(el.files.length > 0 && el.files[0].size > 3 * 1024 * 1024) {
-           return Swal.fire('Ukuran File Terlalu Besar', `File ${filesToUpload[i].prefix} melebihi 3MB. Harap kompres terlebih dahulu.`, 'warning');
+      let requiredIds = ['fileTranskrip', 'fileKRS', 'fileUKBI', 'fileBing', 'fileOrtu', 'fileSehat', 'fileAsuransi'];
+      let missingUploads = false;
+      
+      for(let id of requiredIds) {
+        if(document.getElementById(id).files.length > 0 && !window.uploadedFileUrls[id]) {
+            missingUploads = true;
         }
       }
 
+      if(missingUploads) {
+        return Swal.fire('Peringatan', 'Masih ada file yang sedang diproses atau gagal terunggah. Pastikan semua file ada tanda "Selesai".', 'warning');
+      }
+
       Swal.fire({
-        title: 'Memproses Pendaftaran...',
-        html: 'Mengunggah dokumen ke Drive <br><b>0</b>%',
+        title: 'Menyimpan Pendaftaran...',
+        html: 'Menyimpan data Anda ke database...',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
       });
 
-      let uploadedUrls = {};
-
-      for (let i = 0; i < filesToUpload.length; i++) {
-        let el = document.getElementById(filesToUpload[i].id);
-        if (el.files.length > 0) {
-          let file = el.files[0];
-          let base64 = await getBase64(file);
-          let base64Content = base64.split(',')[1];
-          let fileName = `${npm}_${filesToUpload[i].prefix}_${file.name}`;
-          
-          Swal.getHtmlContainer().querySelector('b').textContent = Math.round(((i)/filesToUpload.length)*100);
-          
-          let res;
-          if(typeof google !== 'undefined') {
-            res = await gasRun('uploadFileToDrive', base64Content, fileName, file.type);
-          } else {
-            // Mock upload
-            await new Promise(r => setTimeout(r, 600));
-            res = { success: true, url: 'https://drive.google.com/mock/' + fileName };
-          }
-          
-          if (res.success) {
-            uploadedUrls[filesToUpload[i].id] = res.url;
-          } else {
-            Swal.fire('Error', 'Gagal mengunggah ' + filesToUpload[i].prefix + ': ' + res.message, 'error');
-            return;
-          }
-        }
-      }
-
-      Swal.getHtmlContainer().querySelector('b').textContent = '100';
-      Swal.update({ html: 'Menyimpan data pendaftaran...' });
-
       let payload = {
         npm: npm, nama: nama, prodi: prodi,
-        url_transkrip: uploadedUrls['fileTranskrip'],
-        url_khs: uploadedUrls['fileKHS'],
+        url_transkrip: window.uploadedFileUrls['fileTranskrip'],
+        url_khs: window.uploadedFileUrls['fileKRS'],
         nilai_ukbi: document.getElementById('nilaiUKBI').value,
-        url_ukbi: uploadedUrls['fileUKBI'],
+        url_ukbi: window.uploadedFileUrls['fileUKBI'],
         jenis_bing: document.getElementById('jenisBing').value,
         nilai_bing: document.getElementById('nilaiBing').value,
-        url_bing: uploadedUrls['fileBing'],
-        url_ortu: uploadedUrls['fileOrtu'],
-        url_sehat: uploadedUrls['fileSehat'],
-        url_asuransi: uploadedUrls['fileAsuransi']
+        url_bing: window.uploadedFileUrls['fileBing'],
+        url_ortu: window.uploadedFileUrls['fileOrtu'],
+        url_sehat: window.uploadedFileUrls['fileSehat'],
+        url_asuransi: window.uploadedFileUrls['fileAsuransi']
       };
 
       let resSubmit;
@@ -602,11 +580,12 @@
         document.getElementById('registrationForm').reset();
         document.getElementById('npmStatus').innerHTML = 'Masukkan NPM lalu klik Cari.';
         document.getElementById('npmStatus').className = 'text-muted small';
+        window.uploadedFileUrls = {}; // Reset URL
+        document.querySelectorAll('.badge-upload').forEach(b => b.remove()); // Hapus badge sukses
       } else {
         Swal.fire('Gagal Menyimpan', resSubmit.message, 'error');
       }
     }
-
     // 3. Login 
     function handleLogin() {
       var u = document.getElementById('username').value.trim();
