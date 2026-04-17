@@ -524,6 +524,64 @@
       reader.onload = () => resolve(reader.result);
       reader.onerror = error => reject(error);
     });
+    // Fungsi Auto Upload saat file dipilih
+    async function handleAutoUpload(event, prefix) {
+      const el = event.target;
+      if(el.files.length === 0) return;
+
+      let npm = document.getElementById('npm').value.trim();
+      let nama = document.getElementById('nama').value.trim();
+      if(!npm || !nama) {
+        Swal.fire('Peringatan', 'Pastikan Anda sudah mengisi NPM dan klik tombol Cari terlebih dahulu sebelum memilih file.', 'warning');
+        el.value = '';
+        return;
+      }
+
+      let file = el.files[0];
+      if(file.size > 2 * 1024 * 1024) {
+         Swal.fire('Peringatan', 'Ukuran maksimal 2MB per file.', 'warning');
+         el.value = ''; return;
+      }
+
+      let labelEl = el.previousElementSibling;
+      let originalLabel = labelEl.innerHTML.split(' <span class="badge')[0]; // Bersihkan badge lama jika ada
+      labelEl.innerHTML = originalLabel + ' <span class="badge bg-warning text-dark ms-2 badge-upload">Mengunggah... <span class="spinner-border spinner-border-sm" style="width: 0.7rem; height: 0.7rem;"></span></span>';
+      el.disabled = true;
+      document.querySelector('#registrationForm button[type="submit"]').disabled = true; // Kunci tombol submit
+
+      try {
+        let base64 = await getBase64(file);
+        let base64Content = base64.split(',')[1];
+        let fileName = `${npm}_${prefix}_${file.name}`;
+        let res;
+        
+        if(typeof google !== 'undefined') {
+          res = await gasRun('uploadFileToDrive', base64Content, fileName, file.type);
+        } else {
+          await new Promise(r => setTimeout(r, 1500));
+          res = { success: true, url: 'https://mock.url/' + fileName };
+        }
+
+        if(res.success) {
+          window.uploadedFileUrls[el.id] = res.url;
+          labelEl.innerHTML = originalLabel + ' <span class="badge bg-success ms-2 badge-upload"><i class="fa-solid fa-check"></i> Selesai</span>';
+        } else {
+          Swal.fire('Error', res.message, 'error');
+          el.value = '';
+          labelEl.innerHTML = originalLabel;
+        }
+      } catch(e) {
+        Swal.fire('Error', 'Gagal mengunggah file. Silakan coba lagi.', 'error');
+        el.value = '';
+        labelEl.innerHTML = originalLabel;
+      } finally {
+        el.disabled = false;
+        // Buka kunci tombol submit jika tidak ada file lain yang sedang upload
+        if(document.querySelectorAll('.badge-upload.bg-warning').length === 0) {
+           document.querySelector('#registrationForm button[type="submit"]').disabled = false;
+        }
+      }
+    }
 
               // 2. Submit Pendaftaran (Auto Upload URL Mapper)
     async function handleRegistrationSubmit() {
